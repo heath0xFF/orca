@@ -1,11 +1,17 @@
 import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
 import { resolveCodexCommand } from '../codex-cli/command'
-import { resolveAgainAfterRefreshOnMissingProgram } from '../native-chat/structured-agent-command-resolution'
+import {
+  resolveAgainAfterRefreshOnMissingProgram,
+  resolveStructuredAgentInvocation,
+  type StructuredAgentInvocation,
+  type StructuredAgentCommandSettings
+} from '../native-chat/structured-agent-command-resolution'
 import type { StructuredAgentLaunchPartResolver } from '../runtime/structured-agent-launch-composition'
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
 import { codexStructuredPermissionPolicy } from '../../shared/codex-permission-policy'
-import { codexStructuredLaunchArgs } from './codex-structured-launch-args'
+import { codexRemoteOption, codexStructuredLaunchArgs } from './codex-structured-launch-args'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
   LEGACY_NATIVE_CHAT_VISUALS_DIR_ENV,
   NATIVE_CHAT_SCRATCH_DIR_ENV,
@@ -21,6 +27,7 @@ export type CodexStructuredInvocationDeps = Pick<
   CodexStructuredLaunchPartDeps,
   'resolveCommand'
 > & {
+  resolveCommandSettings?: () => StructuredAgentCommandSettings
   /** Fresh spawn environment, never persisted in the session record. */
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
   /** Refresh after a missing binary; absence disables retry. */
@@ -29,8 +36,7 @@ export type CodexStructuredInvocationDeps = Pick<
   resolveWorkingDirectory?: () => Promise<string> | string
 }
 
-export type CodexStructuredInvocation = {
-  command: string
+export type CodexStructuredInvocation = StructuredAgentInvocation & {
   environment: NodeJS.ProcessEnv | undefined
 }
 
@@ -51,11 +57,18 @@ async function readCodexStructuredInvocation(
   const environment = await deps.resolveEnvironment?.()
   const pathEnv = environment?.PATH ?? environment?.Path ?? null
   const homePath = environment?.HOME ?? environment?.USERPROFILE
-  const command = (deps.resolveCommand ?? resolveCodexCommand)({
-    pathEnv,
-    ...(homePath ? { homePath } : {})
-  })
-  return { command, environment }
+  const invocation = resolveStructuredAgentInvocation(
+    'codex',
+    deps.resolveCommandSettings?.() ?? {},
+    { pathEnv, ...(homePath ? { homePath } : {}) },
+    { resolve: (_name, options) => (deps.resolveCommand ?? resolveCodexCommand)(options) }
+  )
+  if (invocation.prefixArgs?.some((token) => codexRemoteOption(token))) {
+    throw new AgentSessionPreSpawnError('the codex Command setting must run a local app-server', {
+      reason: 'agentCommandNotRunnable'
+    })
+  }
+  return { ...invocation, environment }
 }
 
 /** Derive resume identity and account home from the durable record. */
@@ -65,11 +78,12 @@ export function codexStructuredLaunchPart(
   return async (basis) => {
     const { record } = basis
     const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
-    const { command } = await resolveCodexStructuredInvocation({
+    const { command, prefixArgs } = await resolveCodexStructuredInvocation({
       ...(deps.resolveCommand ? { resolveCommand: deps.resolveCommand } : {}),
       refreshEnvironmentAfterMiss: basis.refreshAfterMissingProgram,
       resolveWorkingDirectory: basis.launchDirectory,
-      resolveEnvironment: basis.environment
+      resolveEnvironment: basis.environment,
+      resolveCommandSettings: basis.commandSettings
     })
     const environment = await basis.environment()
     const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
@@ -82,7 +96,8 @@ export function codexStructuredLaunchPart(
     return {
       launch: {
         command,
-        args: [...args, 'app-server'],
+        ...(prefixArgs ? { prefixArgs } : {}),
+        args: [...(prefixArgs ?? []), ...args, 'app-server'],
         codexHome: accountHome.path,
         resumeThreadId,
         // Only created threads may be unsaved; resumed, forked and adopted threads were persisted.

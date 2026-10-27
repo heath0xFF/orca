@@ -7,7 +7,7 @@ import {
 } from '../../shared/node-cli-command-resolution'
 import {
   hasExplicitTuiLaunchCommand,
-  structuredAgentCommandToken
+  structuredAgentCommandTokens
 } from '../../shared/tui-agent-launch-command-override'
 import {
   AgentSessionPreSpawnError,
@@ -21,19 +21,12 @@ export type StructuredAgentCommandSettings = Partial<
 type CommandSettings = StructuredAgentCommandSettings
 type CommandOptions = NonNullable<Parameters<typeof resolveExecutableCommand>[1]>
 
-function resolveOverride(
-  agent: TuiAgent,
-  settings: CommandSettings | null | undefined,
-  options: CommandOptions
-) {
-  const token = structuredAgentCommandToken(settings?.agentCmdOverrides?.[agent] ?? '')
-  const overlay = settings?.agentDefaultEnv?.[agent]
-  return token
-    ? resolveExecutableCommand(token, {
-        ...options,
-        pathEnv: guestNativePathEnv(options.pathEnv ?? overlay?.PATH ?? overlay?.Path)
-      })
-    : null
+export type StructuredAgentInvocation = { command: string; prefixArgs?: readonly string[] }
+
+function commandNotRunnable(agent: TuiAgent): AgentSessionPreSpawnError {
+  return new AgentSessionPreSpawnError(`the ${agent} Command setting is not a runnable program`, {
+    reason: 'agentCommandNotRunnable'
+  })
 }
 
 // Extensionless commands cannot spawn on Windows; .cmd/.bat use Orca’s shim handling.
@@ -48,21 +41,44 @@ export function resolveStructuredAgentCommand(
   options: CommandOptions = {},
   stock: { command?: string; resolve?: typeof resolveCliCommand } = {}
 ): string {
+  const invocation = resolveStructuredAgentInvocation(agent, settings, options, stock)
+  // Adapters that accept only an executable must not silently discard wrapper arguments.
+  if (invocation.prefixArgs?.length) {
+    throw commandNotRunnable(agent)
+  }
+  return invocation.command
+}
+
+export function resolveStructuredAgentInvocation(
+  agent: TuiAgent,
+  settings: CommandSettings,
+  options: CommandOptions = {},
+  stock: { command?: string; resolve?: typeof resolveCliCommand } = {}
+): StructuredAgentInvocation {
   if (!hasExplicitTuiLaunchCommand(settings, agent)) {
     // WSL PATH may contain drive-mounted Windows shims after native entries.
     const pathEnv = guestNativePathEnv(options.pathEnv)
-    return (stock.resolve ?? resolveCliCommand)(
-      stock.command ?? agent,
-      pathEnv === options.pathEnv ? options : { ...options, pathEnv }
-    )
+    return {
+      command: (stock.resolve ?? resolveCliCommand)(
+        stock.command ?? agent,
+        pathEnv === options.pathEnv ? options : { ...options, pathEnv }
+      )
+    }
   }
-  const command = resolveOverride(agent, settings, options)
-  if (!command || !spawnableOn(options.platform ?? process.platform, command)) {
-    throw new AgentSessionPreSpawnError(`the ${agent} Command setting is not a runnable program`, {
-      reason: 'agentCommandNotRunnable'
-    })
+  const platform = options.platform ?? process.platform
+  const tokens = structuredAgentCommandTokens(settings.agentCmdOverrides?.[agent] ?? '', platform)
+  const overlay = settings.agentDefaultEnv?.[agent]
+  const command = tokens
+    ? resolveExecutableCommand(tokens[0], {
+        ...options,
+        pathEnv: guestNativePathEnv(options.pathEnv ?? overlay?.PATH ?? overlay?.Path)
+      })
+    : null
+  if (!command || !spawnableOn(platform, command)) {
+    throw commandNotRunnable(agent)
   }
-  return command
+  const prefixArgs = tokens?.slice(1)
+  return { command, ...(prefixArgs?.length ? { prefixArgs } : {}) }
 }
 
 export type ProgramSearch<T> = {

@@ -57,7 +57,10 @@ function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredA
       ...(deps.prepareCodexCatalogProbeHome
         ? { prepareHome: deps.prepareCodexCatalogProbeHome }
         : {}),
-      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
+      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {}),
+      ...(deps.resolveAgentCommandSettings
+        ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
+        : {})
     }),
     resolveLaunch: withSupportedCodexCli(
       composeStructuredLaunch(

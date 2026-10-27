@@ -78,6 +78,7 @@ describe('Pi RPC launch', () => {
     '--continue'
   ])('rejects arguments that bypass the chat mode or its session handle: %s', (arg) => {
     expect(() => buildPiRpcLaunch({ ...options, extraArgs: [arg] })).toThrow('conflicts')
+    expect(() => buildPiRpcLaunch({ ...options, prefixArgs: ['pi', arg] })).toThrow('conflicts')
   })
 
   it('rejects a supervised permissions request instead of silently running in full access', () => {

@@ -90,7 +90,7 @@ async function probeCodexSkills(
   isCurrent: () => boolean
 ): Promise<AtRestCommandScan> {
   const accountHomePath = requireLegacyAgentSessionAccountHome(record.accountHome).path
-  const { command, environment } = await resolveCodexStructuredInvocation({
+  const { command, prefixArgs, environment } = await resolveCodexStructuredInvocation({
     ...deps,
     resolveWorkingDirectory: () => cwd
   })
@@ -106,7 +106,7 @@ async function probeCodexSkills(
   void (deps.runSession ?? runCodexAppServerSession)(
     {
       command,
-      args: [...args, 'app-server'],
+      args: [...(prefixArgs ?? []), ...args, 'app-server'],
       // skills/list takes the folder per request; a settling probe in it blocks Windows worktree removal (#33174).
       cwd: resolveHiddenProbeCwd(),
       cliPath: command,

@@ -73,6 +73,32 @@ describe('a resting Codex chat lists the skills Codex would load', () => {
     settling.forEach((resolve) => resolve())
   })
 
+  it('lists skills through the configured wrapper with the pinned account', async () => {
+    const invocations: CodexAppServerInvocation[] = []
+    const catalog = createCodexAtRestSkillCatalog({
+      resolveWorkspacePath: async () => '/work',
+      resolveLaunchArgs: () => [],
+      resolveCommandSettings: () => ({
+        agentCmdOverrides: { codex: `"${process.execPath}" codex` }
+      }),
+      sleep: async () => {},
+      runSession: async (invocation, body) => {
+        invocations.push(invocation)
+        return body({ request: async () => ({ data: [] }), notify: () => {} })
+      }
+    })
+    const record = floatingCodexChat('wrapped', '/work')
+    catalog.read(record)
+    await catalog.settled(record, 1_000)
+    expect(invocations).toEqual([
+      expect.objectContaining({
+        command: process.execPath,
+        args: ['codex', 'app-server'],
+        env: { CODEX_HOME: '/home/me/.codex' }
+      })
+    ])
+  })
+
   it.each(['method not found', 'temporary failure'])(
     'retains the floor after %s without holding the answer',
     async (message) => {

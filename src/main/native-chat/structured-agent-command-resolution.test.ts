@@ -2,7 +2,10 @@ import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { resolveStructuredAgentCommand } from './structured-agent-command-resolution'
+import {
+  resolveStructuredAgentCommand,
+  resolveStructuredAgentInvocation
+} from './structured-agent-command-resolution'
 import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 
 const NOT_RUNNABLE = expect.objectContaining({
@@ -71,6 +74,25 @@ describe('structured agent executable resolution', () => {
         { homePath: directory }
       )
     ).toBe(command)
+  })
+
+  it('resolves a wrapper on the host PATH and retains its prefix without weakening executable-only callers', () => {
+    const { directory } = executable()
+    const name = process.platform === 'win32' ? 'launcher.cmd' : 'launcher'
+    const command = join(directory, name)
+    writeFileSync(command, '#!/bin/sh\nexit 0\n')
+    chmodSync(command, 0o755)
+    const settings = {
+      agentCmdOverrides: { pi: 'launcher --profile "work account" pi' },
+      agentDefaultEnv: { pi: { PATH: directory } }
+    }
+    expect(resolveStructuredAgentInvocation('pi', settings)).toEqual({
+      command,
+      prefixArgs: ['--profile', 'work account', 'pi']
+    })
+    expect(() => resolveStructuredAgentCommand('pi', settings)).toThrow(NOT_RUNNABLE)
+    settings.agentCmdOverrides.pi = 'missing-launcher pi'
+    expect(() => resolveStructuredAgentInvocation('pi', settings)).toThrow(NOT_RUNNABLE)
   })
 
   it('rereads a changed override instead of storing another copy of the command', () => {
@@ -167,6 +189,18 @@ describe('structured agent executable resolution', () => {
         ).toBe(command)
       }
     )
+
+    it('keeps a wrapper subcommand when resolving a Windows .cmd shim', () => {
+      const { directory } = executable()
+      const command = fileIn(directory, 'launcher.cmd')
+      expect(
+        resolveStructuredAgentInvocation(
+          'codex',
+          { agentCmdOverrides: { codex: 'launcher codex' } },
+          { platform: 'win32', pathEnv: directory, homePath: directory }
+        )
+      ).toEqual({ command, prefixArgs: ['codex'] })
+    })
 
     it('finds the .cmd shim for a bare name, as the stock lookup does', () => {
       const { directory } = executable()

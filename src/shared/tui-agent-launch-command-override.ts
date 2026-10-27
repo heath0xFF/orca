@@ -2,23 +2,29 @@ import type { GlobalSettings } from './global-settings-types'
 import type { TuiAgent } from './tui-agent'
 import { tokenizeCustomCommandTemplate } from './commit-message-prompt'
 
-/** A single literal executable; the execution host verifies that the file is runnable. */
-export function structuredAgentCommandToken(command: string): string | null {
+// Keep wrapper arguments literal; structured launches never evaluate shell syntax.
+export function structuredAgentCommandTokens(
+  command: string,
+  platform?: NodeJS.Platform
+): string[] | null {
   const input = command.trim()
   if (!input || /[\0\r\n$`]/.test(input)) {
     return null
   }
   const windowsPath = /^(?:["']?)(?:[A-Za-z]:[\\/]|\\\\)/.test(input)
-  const parsed = tokenizeCustomCommandTemplate(input, windowsPath ? 'literal' : 'escape')
+  const parsed = tokenizeCustomCommandTemplate(
+    input,
+    windowsPath || platform === 'win32' ? 'literal' : 'escape'
+  )
   if (
     !parsed.ok ||
-    parsed.tokens.length !== 1 ||
-    parsed.spans.some((span) => span.divergesFromShell)
+    !parsed.tokens[0] ||
+    parsed.spans.some((span) => span.divergesFromShell) ||
+    parsed.tokens.some((token) => /[|&;<>(){}[\]*?!]/.test(token))
   ) {
     return null
   }
-  const token = parsed.tokens[0]
-  return token && !/[|&;<>(){}[\]*?!]/.test(token) ? token : null
+  return parsed.tokens
 }
 
 /** Terminal-backed chat skips the structured catalog when its launch command is customized. */

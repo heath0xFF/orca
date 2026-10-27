@@ -64,6 +64,12 @@ function isPermissionConfig(value: string): boolean {
   return CODEX_PERMISSION_CONFIG_ROOTS.some((root) => root === key)
 }
 
+// A local chat must not move its app-server to another execution host.
+export function codexRemoteOption(token: string): string | null {
+  const option = optionName(token)
+  return option === '--remote' || option === '--remote-auth-token-env' ? option : null
+}
+
 /** Accept only root CLI options; Orca sets permissions on the thread RPC. */
 export function codexStructuredLaunchArgs(tokens: readonly string[]): string[] {
   const args: string[] = []
@@ -73,7 +79,7 @@ export function codexStructuredLaunchArgs(tokens: readonly string[]): string[] {
       break
     }
     const option = optionName(token)
-    if (option === '--remote' || option === '--remote-auth-token-env') {
+    if (codexRemoteOption(token)) {
       throw new StructuredAgentArgumentsError('Codex', option, 'unsupportedOption')
     }
     if (DROPPED_SWITCHES.has(option)) {

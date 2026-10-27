@@ -106,6 +106,22 @@ describe('codex structured launch resolution', () => {
     }
   )
 
+  it.each(['--remote=wss://host', '--remote-auth-token-env=TOKEN'])(
+    'does not let wrapper arguments bypass local execution: %s',
+    async (arg) => {
+      const resolve = createCodexStructuredLaunchResolver({
+        store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
+        resolveLaunchArgs: () => [],
+        resolveCommandSettings: () => ({
+          agentCmdOverrides: { codex: `"${process.execPath}" codex ${arg}` }
+        })
+      })
+      await expect(resolve({ identity: IDENTITY })).rejects.toMatchObject({
+        reason: 'agentCommandNotRunnable'
+      })
+    }
+  )
+
   it('starts a new thread after clear without reusing the old handle', async () => {
     const value = record({
       providerContextBoundary: { operationId: 'clear', afterFence: 2, clearedAt: 100 },

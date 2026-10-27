@@ -139,6 +139,26 @@ describe('structuredAgentSupportsLaunch', () => {
     }
   )
 
+  it('checks the Pi behind a wrapper, not the wrapper version', async () => {
+    installedVersion('0.84.0')
+    const wrapped = {
+      requireStore: () => ({
+        getSettings: () => ({
+          ...settings,
+          agentCmdOverrides: { pi: `"${process.execPath}" pi` }
+        })
+      })
+    }
+    expect(await structuredAgentSupportsLaunch('pi', workspace, wrapped)).toBe(true)
+    expect(asked).toEqual([
+      expect.objectContaining({
+        program: process.execPath,
+        prefixArgs: ['pi'],
+        cwd: '/repo/worktree'
+      })
+    ])
+  })
+
   it('never rereads the shell for an OpenCode that is installed but unsupported', async () => {
     installedVersion('1.18.30')
     expect(await structuredAgentSupportsLaunch('opencode', workspace, runtime)).toBe(false)

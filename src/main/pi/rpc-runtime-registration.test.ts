@@ -20,9 +20,12 @@ async function supportsLaunch({ cwd, env, commandSettings }: LaunchInput): Promi
   if (!check) {
     throw new Error('Pi registers a launch check')
   }
-  const { command, env: launchEnv } = check.resolveLaunch(env, commandSettings)
+  const { command, env: launchEnv, prefixArgs } = check.resolveLaunch(env, commandSettings)
   return launchableRelease(
-    await checkAgentCliVersion({ program: command, cwd, env: launchEnv }, check.minimumVersions)
+    await checkAgentCliVersion(
+      { program: command, cwd, env: launchEnv, prefixArgs },
+      check.minimumVersions
+    )
   )
 }
 let root: string
@@ -101,6 +104,24 @@ describe('Pi launch support before session creation', () => {
       supportsLaunch(input({ agentCmdOverrides: { pi: `"${process.execPath}"` } }))
     ).resolves.toBe(true)
     expect(runProcess).toHaveBeenCalledWith(expect.objectContaining({ program: process.execPath }))
+  })
+
+  it('includes the wrapper subcommand when probing Pi and resolving chat availability', async () => {
+    prints('0.84.0')
+    const wrapped = input({ agentCmdOverrides: { pi: `"${process.execPath}" pi` } })
+    await expect(supportsLaunch(wrapped)).resolves.toBe(true)
+    expect(runProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        program: process.execPath,
+        args: ['pi', '--version']
+      })
+    )
+    expect(
+      PI_RPC_RUNTIME_REGISTRATION.chatProgram?.resolve(wrapped.env, wrapped.commandSettings)
+    ).toMatchObject({
+      command: process.execPath,
+      prefixArgs: ['pi']
+    })
   })
 
   it('refuses an unrunnable Command setting the way its launch does', async () => {

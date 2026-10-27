@@ -20,7 +20,10 @@ import {
   claudeModelCatalogDiscovery,
   codexModelCatalogDiscovery
 } from './structured-agent-model-catalog-discovery'
-import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
+import {
+  resolveStructuredAgentCommand,
+  resolveStructuredAgentInvocation
+} from '../native-chat/structured-agent-command-resolution'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import type {
   StructuredAgentAccountHomeRequest,
@@ -52,7 +55,9 @@ function cliChatProgram(agent: 'claude' | 'codex'): StructuredAgentChatProgram {
       const homePath = env.HOME ?? env.USERPROFILE
       const pathEnv = env.PATH ?? env.Path ?? null
       const options = { pathEnv, ...(homePath ? { homePath } : {}) }
-      return { command: resolveStructuredAgentCommand(agent, commandSettings, options), env }
+      return agent === 'codex'
+        ? { ...resolveStructuredAgentInvocation(agent, commandSettings, options), env }
+        : { command: resolveStructuredAgentCommand(agent, commandSettings, options), env }
     }
   }
 }

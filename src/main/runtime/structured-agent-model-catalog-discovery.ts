@@ -38,7 +38,10 @@ export function codexModelCatalogDiscovery({
       resolveSavedEnvironment: () => environment.resolveBaseEnvironment(true),
       resolveEnv: () => deps.resolveAgentLaunchEnv?.('codex') ?? {},
       refreshEnvironmentAfterMiss: environment.refreshAfterMissingProgram,
-      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
+      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {}),
+      ...(deps.resolveAgentCommandSettings
+        ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
+        : {})
     })
   }
 }

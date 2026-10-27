@@ -48,6 +48,31 @@ describe('Pi model catalog', () => {
     )
   })
 
+  it('uses the same wrapper prefix for the version check and model listing', async () => {
+    const runListing = vi.fn(async () => TABLE)
+    const probeVersion = vi.fn(async () => ({ version: '0.84.0' }))
+    const probe = createPiModelCatalogProbe({
+      resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+      resolveCommandSettings: () => ({ agentCmdOverrides: { pi: `"${process.execPath}" pi` } }),
+      probeVersion,
+      runListing
+    })
+    await probe({ variable: 'PI_CODING_AGENT_DIR', path: '/homes/pi-a' })
+    expect(probeVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        program: process.execPath,
+        prefixArgs: ['pi']
+      })
+    )
+    expect(runListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: process.execPath,
+        args: ['pi', '--list-models']
+      }),
+      { site: 'pi-model-catalog-probe' }
+    )
+  })
+
   it('lists nothing from a Pi that runs no structured chat', async () => {
     const runListing = vi.fn()
     const probe = createPiModelCatalogProbe({

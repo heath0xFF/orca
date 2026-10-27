@@ -39,7 +39,7 @@ export function piModelCatalogFromListing(stdout: string): AgentModelCatalogSucc
 export function createPiModelCatalogProbe(deps: PiModelCatalogProbeDeps): AgentModelCatalogProbe {
   return async (accountHome, options): Promise<AgentModelCatalogSuccess> => {
     const cwd = deps.homePath ?? homedir()
-    const { env, command } = await resolvePiRpcInvocation({
+    const { env, ...invocation } = await resolvePiRpcInvocation({
       accountDir: requireLegacyAgentSessionAccountHome(accountHome).path,
       resolveEnvironment: deps.resolveEnvironment,
       commandSettings: deps.resolveCommandSettings?.(),
@@ -47,17 +47,19 @@ export function createPiModelCatalogProbe(deps: PiModelCatalogProbeDeps): AgentM
       refreshEnvironmentAfterMiss: deps.refreshEnvironmentAfterMiss,
       resolveWorkingDirectory: () => cwd
     })
-    if ((await checkPiRpcVersion({ command, cwd, env }, deps.probeVersion)).status === 'tooOld') {
-      throw new Error(`pi at ${command} does not run structured chats`)
+    if (
+      (await checkPiRpcVersion({ ...invocation, cwd, env }, deps.probeVersion)).status === 'tooOld'
+    ) {
+      throw new Error(`pi at ${invocation.command} does not run structured chats`)
     }
     const launch = buildPiRpcLaunch({
-      command,
+      ...invocation,
       cwd,
       ...piRpcSessionlessEnvironment(env),
       fullAccess: true
     })
     const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
-      { ...launch, args: ['--list-models'] },
+      { ...launch, args: [...(invocation.prefixArgs ?? []), '--list-models'] },
       { site: 'pi-model-catalog-probe', signal: options?.signal }
     )
     const models = piModelCatalogFromListing(stdout)

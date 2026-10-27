@@ -18,7 +18,8 @@ import {
 import { AgentCliInstallationError } from '../native-chat/agent-cli-installation-error'
 import {
   resolveAgainAfterRefreshOnMissingProgram,
-  resolveStructuredAgentCommand,
+  resolveStructuredAgentInvocation,
+  type StructuredAgentInvocation,
   type StructuredAgentCommandSettings
 } from '../native-chat/structured-agent-command-resolution'
 import type { StructuredAgentLaunchPartResolver } from '../runtime/structured-agent-launch-composition'
@@ -49,9 +50,9 @@ export function resolvePiRpcCommand(
   env: Readonly<Record<string, string>>,
   commandSettings: StructuredAgentCommandSettings = {},
   resolve?: typeof resolveCliCommand
-): string {
+): StructuredAgentInvocation {
   const homePath = env.HOME ?? env.USERPROFILE
-  return resolveStructuredAgentCommand(
+  return resolveStructuredAgentInvocation(
     'pi',
     commandSettings,
     { pathEnv: env.PATH ?? env.Path ?? null, ...(homePath ? { homePath } : {}) },
@@ -60,11 +61,16 @@ export function resolvePiRpcCommand(
 }
 
 export function checkPiRpcVersion(
-  launch: { command: string; cwd: string; env: Record<string, string> },
+  launch: StructuredAgentInvocation & { cwd: string; env: Record<string, string> },
   read?: AgentCliVersionReader
 ): Promise<AgentCliVersionCheck> {
   return checkAgentCliVersion(
-    { program: launch.command, cwd: launch.cwd, env: launch.env },
+    {
+      program: launch.command,
+      cwd: launch.cwd,
+      env: launch.env,
+      ...(launch.prefixArgs ? { prefixArgs: launch.prefixArgs } : {})
+    },
     PI_RPC_MINIMUM_VERSIONS,
     read
   )
@@ -118,7 +124,7 @@ export function resolvePiRpcInvocation(deps: {
   refreshEnvironmentAfterMiss?: (askedAt: number) => Promise<void>
   /** Base for relative PATH entries; defaults to Orca's working directory. */
   resolveWorkingDirectory?: () => Promise<string> | string
-}): Promise<{ command: string; env: Record<string, string> }> {
+}): Promise<StructuredAgentInvocation & { env: Record<string, string> }> {
   return resolveAgainAfterRefreshOnMissingProgram(
     async () => {
       const env: Record<string, string> = {}
@@ -128,7 +134,7 @@ export function resolvePiRpcInvocation(deps: {
         }
       }
       env.PI_CODING_AGENT_DIR = deps.accountDir
-      return { env, command: resolvePiRpcCommand(env, deps.commandSettings, deps.resolveCommand) }
+      return { env, ...resolvePiRpcCommand(env, deps.commandSettings, deps.resolveCommand) }
     },
     deps.refreshEnvironmentAfterMiss,
     { env: ({ env }) => env, cwd: deps.resolveWorkingDirectory }
@@ -145,7 +151,7 @@ export function piRpcLaunchPart(
     }
     const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const cwd = await basis.launchDirectory()
-    const { env, command } = await resolvePiRpcInvocation({
+    const { env, ...invocation } = await resolvePiRpcInvocation({
       accountDir: accountHome.path,
       resolveEnvironment: basis.environment,
       commandSettings: basis.commandSettings(),
@@ -186,13 +192,13 @@ export function piRpcLaunchPart(
       }
     }
     // Recheck each launch because the PATH binary may have changed.
-    const launchVersion = await checkPiRpcVersion({ command, cwd, env }, deps.probeVersion)
+    const launchVersion = await checkPiRpcVersion({ ...invocation, cwd, env }, deps.probeVersion)
     if (launchVersion.status === 'tooOld') {
       throw AgentCliInstallationError.tooOld('pi', launchVersion)
     }
     return {
       launch: {
-        command,
+        ...invocation,
         fullAccess: deps.resolveFullAccess?.() ?? true,
         previous,
         ...(sessionFile || forkFile

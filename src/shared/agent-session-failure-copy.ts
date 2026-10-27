@@ -75,7 +75,7 @@ export const AGENT_SESSION_FAILURE_COPY = {
   claudeAccountFolderMissing: CLAUDE_PROFILE_MISSING_MESSAGE,
   claudeAccountSetupFailed: CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
   agentCommandNotRunnable:
-    "{{agent}}'s Command in Settings → Agents must be a program path or name Orca can find, with no arguments or variables. Change it or reset it.",
+    "{{agent}}'s Command in Settings → Agents could not be used. Check the executable and command syntax, or reset it.",
   runtimeNotInstalled:
     "{{agent}} isn't installed on the computer running this chat. Install it from the chat in a current version of Orca.",
   fullAccessAsRoot:

@@ -178,6 +178,33 @@ describe('Pi host launch resolution', () => {
     expect(probeVersion).not.toHaveBeenCalled()
   })
 
+  it('keeps wrapper arguments before Pi arguments for version checks, fresh starts and resumes', async () => {
+    const h = await setup()
+    h.settings.agentCmdOverrides.pi = `"${process.execPath}" --profile "work account" pi`
+    const launch = await h.resolver(identity)
+    const prefixArgs = ['--profile', 'work account', 'pi']
+    expect(probeVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        program: process.execPath,
+        prefixArgs
+      })
+    )
+    expect(buildPiRpcLaunch(launch)).toMatchObject({
+      command: process.execPath,
+      args: [...prefixArgs, '--mode', 'rpc']
+    })
+    const file = join(root, 'wrapped-session.jsonl')
+    await writeFile(file, `${JSON.stringify({ type: 'session', cwd: h.workspace })}\n`)
+    h.withPrior(h.prior(file))
+    expect(buildPiRpcLaunch(await h.resolver(identity)).args).toEqual([
+      ...prefixArgs,
+      '--mode',
+      'rpc',
+      '--session',
+      file
+    ])
+  })
+
   it('resumes the same directory and forks a session from a different directory', async () => {
     const h = await setup()
     const same = join(root, 'same.jsonl')

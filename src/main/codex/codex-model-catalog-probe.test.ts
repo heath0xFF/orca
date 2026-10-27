@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createCodexModelCatalogProbe } from './codex-model-catalog-probe'
 import { resolveCodexStructuredInvocation } from './codex-structured-launch-resolution'
 import { runCodexAppServerSession, type CodexAppServerInvocation } from './codex-app-server-session'
-import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
+import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 
 const MODEL_ROW = {
   model: 'gpt-live',
@@ -14,57 +14,57 @@ const MODEL_ROW = {
 }
 
 describe('codex model catalog probe', () => {
-  it.each([`"${process.execPath}"`, ''])(
-    'lists with the session executable for Command %j',
-    async (command) => {
-      const resolveEnvironment = async (): Promise<NodeJS.ProcessEnv> => ({
-        PATH: '/resolved/bin',
-        HOME: '/homes/user',
-        OPENAI_BASE_URL: 'https://gateway.example',
-        DROPPED: undefined
-      })
-      const resolveCommand = vi.fn((options?: { pathEnv?: string | null; homePath?: string }) => {
-        expect(options?.pathEnv).toBe('/resolved/bin')
-        expect(options?.homePath).toBe('/homes/user')
-        return resolveStructuredAgentCommand(
-          'codex',
-          {
-            agentCmdOverrides: { codex: command }
-          },
-          options
-        )
-      })
-      const invocations: CodexAppServerInvocation[] = []
-      const probe = createCodexModelCatalogProbe({
-        resolveEnvironment,
-        resolveCommand,
-        runSession: async (invocation, body) => {
-          invocations.push(invocation)
-          return body({
-            request: async () => ({ data: [MODEL_ROW], nextCursor: null }),
-            notify: () => {}
-          })
-        }
-      })
-      const success = await probe({ variable: 'CODEX_HOME', path: '/homes/account-a' })
-      expect(success.origin).toBe('probe')
-      expect(success.models.map((model) => model.id)).toEqual(['gpt-live'])
-      const sessionInvocation = await resolveCodexStructuredInvocation({
-        resolveEnvironment,
-        resolveCommand
-      })
-      expect(invocations).toHaveLength(1)
-      expect(invocations[0]!.cliPath).toBe(sessionInvocation.command)
-      expect(invocations[0]!.env).toEqual({
-        PATH: '/resolved/bin',
-        HOME: '/homes/user',
-        OPENAI_BASE_URL: 'https://gateway.example',
-        CODEX_HOME: '/homes/account-a'
-      })
-      // Marketplace clones may outlive short-lived probe teardown.
-      expect(invocations[0]!.args.join(' ')).toContain('features.plugins=false')
-    }
-  )
+  it.each([
+    `"${process.execPath}"`,
+    '',
+    `"${process.execPath}" codex`,
+    `"${process.execPath}" --profile "work account" codex`
+  ])('lists with the session executable for Command %j', async (command) => {
+    const resolveEnvironment = async (): Promise<NodeJS.ProcessEnv> => ({
+      PATH: '/resolved/bin',
+      HOME: '/homes/user',
+      OPENAI_BASE_URL: 'https://gateway.example',
+      DROPPED: undefined
+    })
+    const resolveCommand = vi.fn((options?: { pathEnv?: string | null; homePath?: string }) =>
+      resolveCliCommand('codex', options)
+    )
+    const resolveCommandSettings = () => ({ agentCmdOverrides: { codex: command } })
+    const invocations: CodexAppServerInvocation[] = []
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment,
+      resolveCommand,
+      resolveCommandSettings,
+      runSession: async (invocation, body) => {
+        invocations.push(invocation)
+        return body({
+          request: async () => ({ data: [MODEL_ROW], nextCursor: null }),
+          notify: () => {}
+        })
+      }
+    })
+    const success = await probe({ variable: 'CODEX_HOME', path: '/homes/account-a' })
+    expect(success.origin).toBe('probe')
+    expect(success.models.map((model) => model.id)).toEqual(['gpt-live'])
+    const sessionInvocation = await resolveCodexStructuredInvocation({
+      resolveEnvironment,
+      resolveCommand,
+      resolveCommandSettings
+    })
+    expect(invocations).toHaveLength(1)
+    expect(invocations[0]!.cliPath).toBe(sessionInvocation.command)
+    const prefixArgs = sessionInvocation.prefixArgs ?? []
+    expect(invocations[0]!.args.slice(0, prefixArgs.length)).toEqual(prefixArgs)
+    expect(invocations[0]!.args).toContain('app-server')
+    expect(invocations[0]!.env).toEqual({
+      PATH: '/resolved/bin',
+      HOME: '/homes/user',
+      OPENAI_BASE_URL: 'https://gateway.example',
+      CODEX_HOME: '/homes/account-a'
+    })
+    // Marketplace clones may outlive short-lived probe teardown.
+    expect(invocations[0]!.args.join(' ')).toContain('features.plugins=false')
+  })
 
   it('keeps the listing when config/read never answers', async () => {
     const server = String.raw`
@@ -137,18 +137,13 @@ describe('codex model catalog probe', () => {
     )
   })
 
-  it.each(['npx codex', 'codex --profile work', '/missing/codex', './codex'])(
+  it.each(['codex && other', 'codex $PROFILE', '/missing/codex subcommand', './codex'])(
     'lists nothing, and never probes the stock CLI, for Command %s',
     async (command) => {
       const runSession = vi.fn()
       const probe = createCodexModelCatalogProbe({
         resolveEnvironment: async () => ({ PATH: '/bin' }),
-        resolveCommand: (options) =>
-          resolveStructuredAgentCommand(
-            'codex',
-            { agentCmdOverrides: { codex: command } },
-            options
-          ),
+        resolveCommandSettings: () => ({ agentCmdOverrides: { codex: command } }),
         runSession
       })
       await expect(probe({ variable: 'CODEX_HOME', path: '/homes/a' })).rejects.toMatchObject({

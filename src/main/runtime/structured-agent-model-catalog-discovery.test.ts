@@ -11,10 +11,14 @@ import { acpLaunchSpecFor } from '../acp/acp-launch-specs'
 import type { StructuredAgentModelCatalogContext } from './structured-agent-runtime-registrations'
 
 // What each probe would have spawned; nothing is.
-const spawned = vi.hoisted((): { commands: string[] } => ({ commands: [] }))
+const spawned = vi.hoisted((): { commands: string[]; args: readonly string[][] } => ({
+  commands: [],
+  args: []
+}))
 vi.mock('../provider-process/managed-provider-process', () => ({
-  spawnManagedProviderProcess: (launch: { command: string }) => {
+  spawnManagedProviderProcess: (launch: { command: string; args: string[] }) => {
     spawned.commands.push(launch.command)
+    spawned.args = [...spawned.args, launch.args]
     throw new Error('no spawn in this test')
   }
 }))
@@ -61,6 +65,21 @@ describe('the model catalog contract on every registration', () => {
     } else {
       expect(discovery.reason).not.toBe('')
     }
+  })
+
+  it.each(['pi', 'codex'])('finds the %s chat program with a wrapper subcommand', (agent) => {
+    const metadata = STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.find(
+      (entry) => entry.definition.agent === agent
+    )
+    expect(
+      metadata?.chatProgram?.resolve(
+        {},
+        { agentCmdOverrides: { [agent]: `"${process.execPath}" ${agent}` } }
+      )
+    ).toMatchObject({
+      command: process.execPath,
+      prefixArgs: [agent]
+    })
   })
 
   it('gives the catalog service a probe for exactly the registrations that have one', () => {
@@ -111,7 +130,8 @@ describe('the model catalog contract on every registration', () => {
   it('lists through the command each agent is set to run, never a bare name', async () => {
     const rig = mkdtempSync(join(tmpdir(), 'orca-catalog-overrides-'))
     const home = join(rig, 'home')
-    const standIn = (agent: string): string => join(rig, `${agent}-standin`)
+    const standIn = (agent: string): string =>
+      join(rig, `${agent}-standin${process.platform === 'win32' ? '.cmd' : ''}`)
     for (const agent of ['claude', 'codex', 'grok']) {
       // Never run: the spawn is mocked; the override must only be a runnable file.
       writeFileSync(standIn(agent), '#!/bin/sh\nexit 1\n')
@@ -120,7 +140,7 @@ describe('the model catalog contract on every registration', () => {
     const settings = {
       agentCmdOverrides: {
         claude: standIn('claude'),
-        codex: standIn('codex'),
+        codex: `"${standIn('codex')}" codex`,
         grok: standIn('grok')
       }
     }
@@ -144,8 +164,13 @@ describe('the model catalog contract on every registration', () => {
     const variables = { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME', grok: 'GROK_HOME' }
     for (const [agent, variable] of Object.entries(variables)) {
       spawned.commands.length = 0
+      spawned.args = []
       await expect(probes[agent]!({ variable, path: home })).rejects.toThrow()
       expect(spawned.commands, agent).toEqual([standIn(agent)])
+      if (agent === 'codex') {
+        expect(spawned.args[0]?.[0]).toBe('codex')
+        expect(spawned.args[0]).toContain('app-server')
+      }
     }
     rmSync(rig, { recursive: true, force: true })
   })

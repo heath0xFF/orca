@@ -9,6 +9,7 @@ import { STRUCTURED_CHILD_ENV_TO_DELETE } from '../runtime/structured-session-ch
 
 export type PiRpcLaunchOptions = {
   command: string
+  prefixArgs?: readonly string[]
   cwd: string
   fullAccess: boolean
   extraArgs?: readonly string[]
@@ -69,11 +70,12 @@ export function buildPiRpcLaunch(options: PiRpcLaunchOptions): ProviderProcessLa
   const args = [...(options.extraArgs ?? [])]
   let provider = false
   let model = false
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index]
+  const checkedArgs = [...(options.prefixArgs ?? []), ...args]
+  for (let index = 0; index < checkedArgs.length; index++) {
+    const arg = checkedArgs[index]
     const flag = arg.split('=')[0]
     if (flag === '--provider' || flag === '--model' || flag === '-m') {
-      const value = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : args[++index]
+      const value = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : checkedArgs[++index]
       if (!value || value.startsWith('-')) {
         throw new Error(`Pi ${flag} requires a value`)
       }
@@ -106,6 +108,7 @@ export function buildPiRpcLaunch(options: PiRpcLaunchOptions): ProviderProcessLa
     command: options.command,
     cwd: options.cwd,
     args: [
+      ...(options.prefixArgs ?? []),
       '--mode',
       'rpc',
       ...args,

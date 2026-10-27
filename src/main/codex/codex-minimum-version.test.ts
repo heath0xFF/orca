@@ -160,6 +160,54 @@ describe('Codex structured launch version admission', () => {
   )
 
   it.each(['start', 'resume'] as const)(
+    'uses the wrapper prefix for version admission and app-server on %s',
+    async (mode) => {
+      const value = record()
+      if (mode === 'resume') {
+        value.providerHandleChain = [
+          {
+            linkId: 'link',
+            handle: codexProviderHandle('thread'),
+            origin: 'created',
+            mintedAtFence: 1,
+            observedAt: 1
+          }
+        ]
+      }
+      const resolve = withSupportedCodexCli(
+        createCodexStructuredLaunchResolver({
+          store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
+          resolveCommandSettings: () => ({
+            agentCmdOverrides: { codex: `"${process.execPath}" --profile "work account" codex` }
+          }),
+          resolveEnvironment: async () => ({ OPENAI_BASE_URL: 'https://gateway.example' }),
+          resolveLaunchArgs: () => ['--model', 'selected-model'],
+          resolveWorkspacePath: async () => '/folder'
+        }),
+        readVersion
+      )
+      const launch = await resolve({
+        identity: identityFor(value.sessionId),
+        spawnToken: TEST_SPAWN_TOKEN
+      })
+      const prefixArgs = ['--profile', 'work account', 'codex']
+      expect(launch).toMatchObject({
+        command: process.execPath,
+        prefixArgs,
+        args: [...prefixArgs, '--model', 'selected-model', 'app-server'],
+        resumeThreadId: mode === 'resume' ? 'thread' : null,
+        env: { CODEX_HOME: '/account', OPENAI_BASE_URL: 'https://gateway.example' }
+      })
+      expect(readVersion).toHaveBeenCalledWith({
+        program: process.execPath,
+        prefixArgs,
+        cwd: '/folder',
+        env: resolveProviderChildEnv(launch, process.env)
+      })
+    }
+  )
+
+  it.each(['start', 'resume'] as const)(
     'admits the workspace-selected version on %s',
     async (mode) => {
       const value = record()
