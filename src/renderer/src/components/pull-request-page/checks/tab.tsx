@@ -1,4 +1,3 @@
-import { selectCanonicalProjects } from '@/store/project-host-setup-selector'
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CircleDashed } from 'lucide-react'
 import { useAppStore } from '@/store'
@@ -12,7 +11,7 @@ import {
 } from '@/components/github-checks-tab-state'
 import { getCheckDetailsKey } from '@/components/github/pr-check-presentation'
 import { getCheckCounts, getChecksSummaryLabel } from '@/components/pr-check-counts'
-import { getBrokenChecks } from '@/components/pr-checks-fix-prompt'
+import { getBrokenChecks } from '../../../../../shared/pr-checks-fix-prompt'
 import { sortChecksBySeverity } from '../../../../../shared/pr-check-severity-order'
 import { githubRepoIdentityKey } from '../../../../../shared/github/repository-identity-key'
 import { getTaskSourceCacheScope } from '../../../../../shared/task-source-context'
@@ -69,7 +68,7 @@ export function ChecksTab({
     targetRepoId ? (s.repos.find((candidate) => candidate.id === targetRepoId) ?? null) : null
   )
   const repos = useAppStore((s) => s.repos)
-  const projects = useAppStore((s) => selectCanonicalProjects(s))
+  const projects = useAppStore((s) => s.projects)
   const [fixingChecks, setFixingChecks] = useState(false)
   const [fixChecksComposerPrompt, setFixChecksComposerPrompt] = useState<string | null>(null)
   const mountedRef = useMountedRef()
@@ -137,7 +136,7 @@ export function ChecksTab({
           {
             activeRepoId: null,
             activeWorktreeId: null,
-            projectHostSetupProjection: { projects, setups: [] },
+            projects,
             repos,
             settings,
             worktreesByRepo: {}

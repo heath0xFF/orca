@@ -170,7 +170,7 @@ describe('canonical source positions', () => {
 
   it('retains reader-produced tied image pages through prepend, append and reconnect into bubbles', async () => {
     const { applyMobileNativeChatStreamFrame } =
-      await import('../../mobile/src/session/mobile-native-chat-stream-frame')
+      await import('../../mobile/src/session/native-chat/mobile-native-chat-stream-frame')
     const { foldMobileNativeChatMessages } =
       await import('../../mobile/src/session/mobile-native-chat-render-data')
     const filePath = await transcriptFile(
@@ -336,7 +336,7 @@ describe('canonical source positions', () => {
 
   it('keeps factual clocks for status, clear boundaries, mixed sources and optimistic tiers', async () => {
     const { mergeNativeChatLiveSession } =
-      await import('../../src/renderer/src/components/native-chat/native-chat-live-status')
+      await import('../../src/shared/native-chat/native-chat-live-status')
     const { applyCommandMarkerBoundaries, commandMarkersAsMessages } =
       await import('../../src/renderer/src/components/native-chat/native-chat-command-marker')
     const { assembleNativeChatSession } =

@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { RotateCw } from 'lucide-react-native'
 import { colors } from '../theme/mobile-theme'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import type { PrSidebarState } from '../session/mobile-pr-sidebar-state'
 import type { PrSidebarLoadOptions } from '../session/use-mobile-pr-sidebar-controller'
 import type { ConnectionState } from '../transport/types'
@@ -18,6 +19,8 @@ import { useMobilePrAiTriage, type MobilePrAiTriage } from '../session/use-mobil
 import { useHostProtocolGates } from './host-protocol-gates-context'
 import { usePRBotAuthorOverrides } from '../session/use-pr-bot-author-overrides'
 import { buildFixChecksPrompt, buildResolveConflictsPrompt } from '../session/pr-ai-triage-prompt'
+import { fetchPRCheckDetails } from '../session/github-pr-rpc'
+import { hasGitHubCheckHandle } from '../../../src/shared/pr-checks-fix-prompt'
 import { prSidebarRenderBranch } from './mobile-pr-sidebar-presentation'
 import { mobilePrSidebarStyles as styles } from './pr-sidebar/mobile-pr-sidebar-styles'
 import type { MobileGitStatusResult } from '../source-control/mobile-git-status'
@@ -62,6 +65,7 @@ export function MobilePRSidebar({
   showOpenOnWeb = true,
   workspaceLabel
 }: Props) {
+  useMobileColorScheme()
   const launchWorkspaceLabel = workspaceLabel || gitBranch
   const branch = prSidebarRenderBranch(state)
   const prNumber = state.kind === 'ready' ? state.data.pr.number : 0
@@ -175,6 +179,7 @@ function PrSidebarContent({
   showOpenOnWeb: boolean
   botAuthorOverrides: ReadonlySet<string>
 }) {
+  useMobileColorScheme()
   if (branch === 'loading') {
     return (
       <View style={styles.stateArea}>
@@ -269,6 +274,7 @@ function PrSidebarSections({
   showOpenOnWeb: boolean
   botAuthorOverrides: ReadonlySet<string>
 }) {
+  useMobileColorScheme()
   const pr = data.pr
   // Build pure triage prompts lazily at launch so each uses current PR data.
   const checksTriage = {
@@ -278,7 +284,20 @@ function PrSidebarSections({
           prNumber: pr.number,
           prTitle: pr.title,
           prUrl: pr.url,
-          checks: data.checks
+          checks: data.checks,
+          loadCheckDetails: async (check) => {
+            if (!client || !hasGitHubCheckHandle(check)) {
+              return null
+            }
+            const outcome = await fetchPRCheckDetails(client, worktreeId, {
+              checkRunId: check.checkRunId,
+              workflowRunId: check.workflowRunId,
+              checkName: check.name,
+              url: check.url,
+              prRepo: pr.prRepo ?? null
+            })
+            return outcome.ok ? outcome.result : null
+          }
         })
       ),
     isBusy: triage.isBusy('fix-checks'),
@@ -291,7 +310,8 @@ function PrSidebarSections({
         buildResolveConflictsPrompt({
           prNumber: pr.number,
           baseRef: pr.conflictSummary?.baseRef ?? pr.baseRefName ?? null,
-          files: pr.conflictSummary?.files ?? []
+          files: pr.conflictSummary?.files ?? [],
+          worktreeId
         })
       ),
     isBusy: triage.isBusy('resolve-conflicts'),
